@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Enchanted Garden</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background: #000; }
+        #ui {
+            position: absolute;
+            bottom: 40px;
+            width: 100%;
+            text-align: center;
+            color: #fff;
+            font-family: 'Georgia', serif;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            font-size: 11px;
+            pointer-events: none;
+            opacity: 0.6;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(0,0,0,1);
+        }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">Drag to turn • Tap to bloom</div>
+
+    <script>
+        let scene, camera, renderer, clock, controls;
+        let flowers = [];
+        let grassBlades = [];
+        let nebulaParticles, starField, shootingStar;
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x020208, 0.012);
+
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera.position.set(0, 15, 35);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setClearColor(0x010105);
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.exposure = 1.5;
+            document.body.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2.1; 
+            controls.minDistance = 5;
+            controls.maxDistance = 150;
+
+            clock = new THREE.Clock();
+
+            scene.add(new THREE.AmbientLight(0x222244, 1.5));
+            const rimLight = new THREE.DirectionalLight(0x7777ff, 1);
+            rimLight.position.set(20, 50, 20);
+            scene.add(rimLight);
+
+            createFlashyBackground();
+            createGround();
+            createGrass();
+
+            window.addEventListener('click', onPointer);
+            window.addEventListener('touchstart', (e) => {
+                if(e.touches.length === 1) onPointer(e.touches[0]);
+            });
+            window.addEventListener('resize', onResize);
+
+            createFlower(new THREE.Vector3(0, 0, 0));
+
+            animate();
+        }
+
+        function createFlashyBackground() {
+            const starGeo = new THREE.BufferGeometry();
+            const starPos = [];
+            const starSizes = [];
+            for (let i = 0; i < 10000; i++) {
+                starPos.push((Math.random() - 0.5) * 1200, (Math.random() - 0.2) * 800, (Math.random() - 0.5) * 1200);
+                starSizes.push(Math.random());
+            }
+            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
+            starGeo.setAttribute('size', new THREE.Float32BufferAttribute(starSizes, 1));
+            
+            const starMat = new THREE.PointsMaterial({ 
+                color: 0xffffff, 
+                size: 0.8, 
+                transparent: true, 
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending 
+            });
+            starField = new THREE.Points(starGeo, starMat);
+            scene.add(starField);
+
+            const nebulaCount = 6;
+            nebulaParticles = new THREE.Group();
+            for(let j=0; j<nebulaCount; j++) {
+                const nGeo = new THREE.BufferGeometry();
+                const nPos = [];
+                const nCols = [];
+                const color = new THREE.Color();
+                color.setHSL(0.5 + Math.random() * 0.4, 0.7, 0.4);
+
+                for (let i = 0; i < 600; i++) {
+                    nPos.push((Math.random() - 0.5) * 150, (Math.random() - 0.5) * 60, (Math.random() - 0.5) * 150);
+                    nCols.push(color.r, color.g, color.b);
+                }
+                nGeo.setAttribute('position', new THREE.Float32BufferAttribute(nPos, 3));
+                nGeo.setAttribute('color', new THREE.Float32BufferAttribute(nCols, 3));
+                
+                const nMat = new THREE.PointsMaterial({ 
+                    size: 2.0, 
+                    vertexColors: true, 
+                    transparent: true, 
+                    opacity: 0.1, 
+                    blending: THREE.AdditiveBlending 
+                });
+                const cloud = new THREE.Points(nGeo, nMat);
+                cloud.position.set((Math.random()-0.5)*300, 30 + Math.random()*40, (Math.random()-0.5)*300);
+                cloud.userData = { speed: 0.0005 + Math.random()*0.001 };
+                nebulaParticles.add(cloud);
+            }
+            scene.add(nebulaParticles);
+
+            const shootGeo = new THREE.BufferGeometry();
+            shootGeo.setAttribute('position', new THREE.Float32BufferAttribute([0,0,0, 0,0,0], 3));
+            shootingStar = new THREE.Line(shootGeo, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 }));
+            scene.add(shootingStar);
+        }
+
+        function createGround() {
+            const groundGeo = new THREE.CircleGeometry(250, 64);
+            const groundMat = new THREE.MeshStandardMaterial({ 
+                color: 0x050805, 
+                roughness: 0.9, 
+                metalness: 0.1 
+            });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.name = "ground";
+            scene.add(ground);
+        }
+
+        function createGrass() {
+            // High-performance Instanced Mesh approach would be better, 
+            // but for visual variety and simple logic we'll use a grouped batch.
+            const grassCount = 25000;
+            const grassGeo = new THREE.PlaneGeometry(0.1, 0.6, 1, 4);
+            // Move origin to bottom of blade
+            grassGeo.translate(0, 0.3, 0); 
+            
+            const grassMat = new THREE.MeshStandardMaterial({ 
+                color: 0x113311, 
+                side: THREE.DoubleSide,
+                alphaTest: 0.5
+            });
+
+            const instancedGrass = new THREE.InstancedMesh(grassGeo, grassMat, grassCount);
+            const dummy = new THREE.Object3D();
+
+            for (let i = 0; i < grassCount; i++) {
+                // Random position within circle
+                const angle = Math.random() * Math.PI * 2;
+                const radius = Math.sqrt(Math.random()) * 80;
+                dummy.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+                
+                dummy.rotation.y = Math.random() * Math.PI;
+                dummy.rotation.x = (Math.random() - 0.5) * 0.2;
+                dummy.scale.setScalar(0.5 + Math.random() * 1.5);
+                
+                dummy.updateMatrix();
+                instancedGrass.setMatrixAt(i, dummy.matrix);
+            }
+            
+            scene.add(instancedGrass);
+            grassBlades = instancedGrass;
+        }
+
+        function createFlower(pos) {
+            const flowerGroup = new THREE.Group();
+            flowerGroup.position.copy(pos);
+            scene.add(flowerGroup);
+
+            const stemH = 5 + Math.random() * 7;
+            const color = new THREE.Color().setHSL(Math.random(), 0.9, 0.6);
+
+            const points = [];
+            const segments = 10;
+            for (let i = 0; i <= segments; i++) {
+                const y = (i / segments) * stemH;
+                const x = i === 0 ? 0 : (Math.random() - 0.5) * (i * 0.5);
+                const z = i === 0 ? 0 : (Math.random() - 0.5) * (i * 0.5);
+                points.push(new THREE.Vector3(x, y, z));
+            }
+            const curve = new THREE.CatmullRomCurve3(points);
+            const stemGeo = new THREE.TubeGeometry(curve, 40, 0.12, 12, false);
+            const stemMat = new THREE.MeshStandardMaterial({ color: 0x0f2a0f, roughness: 0.8 });
+            const stem = new THREE.Mesh(stemGeo, stemMat);
+            stem.scale.set(1, 0.01, 1);
+            flowerGroup.add(stem);
+
+            const leaves = [];
+            const leafCount = 2 + Math.floor(Math.random() * 2);
+            for (let i = 0; i < leafCount; i++) {
+                const lShape = new THREE.Shape();
+                lShape.moveTo(0, 0);
+                lShape.bezierCurveTo(0.6, 0.3, 0.9, 1.4, 0, 2.0);
+                lShape.bezierCurveTo(-0.9, 1.4, -0.6, 0.3, 0, 0);
+
+                const extrudeSettings = { depth: 0.05, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 3 };
+                const leafGeo = new THREE.ExtrudeGeometry(lShape, extrudeSettings);
+                const leaf = new THREE.Mesh(leafGeo, new THREE.MeshStandardMaterial({ color: 0x143a14, roughness: 0.7 }));
+                
+                const t = 0.2 + (i / leafCount) * 0.5;
+                const leafPos = curve.getPoint(t);
+                leaf.position.copy(leafPos);
+                leaf.rotation.z = (Math.random() - 0.5) * 1;
+                leaf.rotation.y = Math.random() * Math.PI * 2;
+                leaf.rotation.x = 1.0; 
+                leaf.scale.setScalar(0.01);
+                
+                flowerGroup.add(leaf);
+                leaves.push({ mesh: leaf, targetScale: 0.5 + Math.random() * 0.5 });
+            }
+
+            const head = new THREE.Group();
+            head.position.copy(points[points.length - 1]);
+            flowerGroup.add(head);
+
+            const petals = [];
+            const layers = 4;
+            for (let l = 0; l < layers; l++) {
+                const count = 12 + l * 2;
+                for (let i = 0; i < count; i++) {
+                    const pShape = new THREE.Shape();
+                    pShape.moveTo(0, 0);
+                    pShape.bezierCurveTo(0.9, 0.3, 0.8, 2.5, 0, 2.8);
+                    pShape.bezierCurveTo(-0.8, 2.5, -0.9, 0.3, 0, 0);
+
+                    const pExtrude = { depth: 0.02, bevelEnabled: true, bevelThickness: 0.08, bevelSize: 0.08, bevelSegments: 5 };
+                    const petalGeo = new THREE.ExtrudeGeometry(pShape, pExtrude);
+                    
+                    const posAttr = petalGeo.attributes.position;
+                    for(let j=0; j<posAttr.count; j++) {
+                        let py = posAttr.getY(j);
+                        let px = posAttr.getX(j);
+                        posAttr.setZ(j, posAttr.getZ(j) + (py * py * 0.15) - (px * px * 0.1));
+                    }
+
+                    const petal = new THREE.Mesh(
+                        petalGeo,
+                        new THREE.MeshStandardMaterial({
+                            color: color,
+                            emissive: color,
+                            emissiveIntensity: 0.4,
+                            transparent: true,
+                            opacity: 0,
+                            roughness: 0.4
+                        })
+                    );
+                    petal.rotation.z = (i / count) * Math.PI * 2;
+                    petal.rotation.x = 1.5; 
+                    petal.userData = {
+                        targetX: 0.2 + (l * 0.45),
+                        delay: 40 + (l * 12) + (i * 2)
+                    };
+                    head.add(petal);
+                    petals.push(petal);
+                }
+            }
+
+            const core = new THREE.Mesh(
+                new THREE.SphereGeometry(0.5, 32, 32),
+                new THREE.MeshStandardMaterial({ color: 0xffdd00, emissive: 0xffaa00, emissiveIntensity: 2.5 })
+            );
+            head.add(core);
+            
+            const ring = new THREE.Mesh(
+                new THREE.TorusGeometry(0.45, 0.1, 16, 50),
+                new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1 })
+            );
+            ring.rotation.x = Math.PI/2;
+            head.add(ring);
+
+            const light = new THREE.PointLight(color, 0, 25);
+            head.add(light);
+
+            flowers.push({ head, stem, leaves, petals, light, age: 0 });
+        }
+
+        function triggerShootingStar() {
+            const startX = (Math.random()-0.5)*500;
+            const startY = 150 + Math.random()*100;
+            const startZ = -300 - Math.random()*200;
+            const positions = new Float32Array([startX, startY, startZ, startX + 60, startY - 40, startZ + 30]);
+            shootingStar.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            shootingStar.material.opacity = 1;
+            setTimeout(() => { shootingStar.material.opacity = 0; }, 350);
+        }
+
+        function onPointer(e) {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const hits = raycaster.intersectObjects(scene.children);
+            const ground = hits.find(h => h.object.name === "ground");
+            if (ground) createFlower(ground.point);
+        }
+
+        function onResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+            controls.update();
+
+            if (starField) {
+                starField.rotation.y += 0.00008;
+                starField.material.opacity = 0.7 + Math.sin(t * 1.5) * 0.2;
+            }
+
+            nebulaParticles.children.forEach(cloud => {
+                cloud.rotation.y += cloud.userData.speed;
+                cloud.position.y += Math.sin(t * 0.5 + cloud.position.x) * 0.01;
+            });
+
+            // Gentle grass sway
+            if (grassBlades) {
+                grassBlades.rotation.x = Math.sin(t * 0.8) * 0.05;
+                grassBlades.rotation.z = Math.cos(t * 0.5) * 0.05;
+            }
+
+            if(Math.random() < 0.008) triggerShootingStar();
+
+            flowers.forEach(f => {
+                f.age++;
+                if (f.age < 60) {
+                    const progress = f.age / 60;
+                    f.stem.scale.y = progress;
+                    f.head.scale.setScalar(progress);
+                    f.leaves.forEach(l => {
+                        const s = progress * l.targetScale;
+                        l.mesh.scale.set(s, s, s);
+                    });
+                }
+                
+                f.head.lookAt(camera.position);
+
+                if (f.age > 60) {
+                    f.petals.forEach(p => {
+                        if (f.age > p.userData.delay) {
+                            p.material.opacity = Math.min(1, p.material.opacity + 0.08);
+                            if (p.rotation.x > p.userData.targetX) p.rotation.x -= 0.025;
+                        }
+                    });
+                    f.light.intensity = Math.min(5, f.light.intensity + 0.15);
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+</html>
