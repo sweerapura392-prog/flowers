@@ -24,17 +24,127 @@
             text-shadow: 0 0 10px rgba(0,0,0,1);
         }
         canvas { display: block; }
+
+#musicPanel {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 260px;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    color: white;
+    font-family: Georgia, serif;
+    overflow: hidden;
+    z-index: 20;
+    transition: 0.3s ease;
+}
+#togglePanel {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 22px;
+    cursor: pointer;
+}
+
+#musicContent {
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+#songName,
+#audioUpload,
+#playBtn {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+#songName {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: white;
+    padding: 12px;
+    border-radius: 12px;
+    outline: none;
+}
+
+#songName::placeholder {
+    color: rgba(255,255,255,0.5);
+}
+
+#audioUpload {
+    color: white;
+}
+
+#playBtn {
+    padding: 12px;
+    border-radius: 12px;
+    border: none;
+    cursor: pointer;
+    background: rgba(255,255,255,0.12);
+    color: white;
+    transition: 0.3s;
+}
+
+#playBtn:hover {
+    background: rgba(255,255,255,0.22);
+}
+
+#songDisplay {
+    text-align: center;
+    font-size: 12px;
+    opacity: 0.7;
+    letter-spacing: 1px;
+}
     </style>
 </head>
 <body>
 
     <div id="ui">Drag to turn • Tap to bloom</div>
 
+<div id="musicPanel" class="minimized">
+    <div id="musicHeader">
+        <span>✨ Music Garden</span>
+        <button id="togglePanel">+</button>
+    </div>
+
+    <div id="musicContent">
+
+        <input
+            type="text"
+            id="songName"
+            placeholder="Type your song name..."
+        >
+
+        <input
+            type="file"
+            id="audioUpload"
+            accept="audio/*"
+        >
+
+        <button id="playBtn">Play Song</button>
+
+        <div id="songDisplay"></div>
+    </div>
+</div>
+
+<audio id="audio"></audio>
+
     <script>
         let scene, camera, renderer, clock, controls;
         let flowers = [];
         let grassBlades = [];
         let nebulaParticles, starField, shootingStar;
+
+let audio;
+let audioContext;
+let analyser;
+let source;
+let frequencyData;
+let beatEnergy = 0;
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
@@ -78,7 +188,7 @@
             window.addEventListener('resize', onResize);
 
             createFlower(new THREE.Vector3(0, 0, 0));
-
+setupMusicSystem();
             animate();
         }
 
@@ -323,7 +433,75 @@
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
+function setupMusicSystem() {
 
+    audio = document.getElementById('audio');
+
+    const upload = document.getElementById('audioUpload');
+    const playBtn = document.getElementById('playBtn');
+    const songInput = document.getElementById('songName');
+    const songDisplay = document.getElementById('songDisplay');
+
+    upload.addEventListener('change', (e) => {
+
+        const file = e.target.files[0];
+
+        if (file) {
+            audio.src = URL.createObjectURL(file);
+
+            if (songInput.value.trim() !== '') {
+                songDisplay.innerText = 'Now Playing: ' + songInput.value;
+            } else {
+                songDisplay.innerText = 'Now Playing: ' + file.name;
+            }
+        }
+    });
+
+    playBtn.addEventListener('click', async () => {
+
+        if (!audio.src) {
+            alert('Upload a song first 🌸');
+            return;
+        }
+
+        if (!audioContext) {
+
+            audioContext = new (
+                window.AudioContext ||
+                window.webkitAudioContext
+            )();
+
+            source = audioContext.createMediaElementSource(audio);
+
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+
+            frequencyData = new Uint8Array(
+                analyser.frequencyBinCount
+            );
+
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+        }
+
+        audioContext.resume();
+audio.play();
+    });
+
+    const panel = document.getElementById('musicPanel');
+    const toggleBtn = document.getElementById('togglePanel');
+
+    toggleBtn.addEventListener('click', () => {
+
+        panel.classList.toggle('minimized');
+
+        if (panel.classList.contains('minimized')) {
+            toggleBtn.innerText = '+';
+        } else {
+            toggleBtn.innerText = '–';
+        }
+    });
+}
         function animate() {
             requestAnimationFrame(animate);
             const t = clock.getElapsedTime();
@@ -346,7 +524,42 @@
             }
 
             if(Math.random() < 0.008) triggerShootingStar();
+if (analyser) {
 
+    analyser.getByteFrequencyData(frequencyData);
+
+    let bass = 0;
+
+    for (let i = 0; i < 10; i++) {
+        bass += frequencyData[i];
+    }
+
+    bass /= 10;
+
+    beatEnergy = bass / 255;
+
+    renderer.exposure = 1.4 + beatEnergy * 1.5;
+
+    nebulaParticles.children.forEach(cloud => {
+        cloud.material.opacity = 0.08 + beatEnergy * 0.35;
+    });
+
+    scene.fog.density = 0.012 + beatEnergy * 0.008;
+
+    if (beatEnergy > 0.55 && Math.random() < 0.25) {
+
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * 45;
+
+        createFlower(
+            new THREE.Vector3(
+                Math.cos(angle) * radius,
+                0,
+                Math.sin(angle) * radius
+            )
+        );
+    }
+}
             flowers.forEach(f => {
                 f.age++;
                 if (f.age < 60) {
@@ -378,4 +591,3 @@
         init();
     </script>
 </body>
-</html>
