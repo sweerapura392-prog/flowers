@@ -107,7 +107,7 @@
 
 <div id="musicPanel" class="minimized">
     <div id="musicHeader">
-        <span>✨ Music Garden</span>
+        <span> Music Garden</span>
         <button id="togglePanel">+</button>
     </div>
 
@@ -351,16 +351,16 @@ setupMusicSystem();
             flowerGroup.add(head);
 
             const petals = [];
-            const layers = 2;
+            const layers = 3;
             for (let l = 0; l < layers; l++) {
-                const count = 8 + l * 2;
+                const count = 10 + l * 2;
                 for (let i = 0; i < count; i++) {
                     const pShape = new THREE.Shape();
                     pShape.moveTo(0, 0);
                     pShape.bezierCurveTo(0.9, 0.3, 0.8, 2.5, 0, 2.8);
                     pShape.bezierCurveTo(-0.8, 2.5, -0.9, 0.3, 0, 0);
 
-                    const pExtrude = { depth: 0.02, bevelEnabled: true, bevelThickness: 0.08, bevelSize: 0.08, bevelSegments: 5 };
+                    const pExtrude = { depth: 0.02, bevelEnabled: false, bevelThickness: 0.08, bevelSize: 0.08, bevelSegments: 5 };
                     const petalGeo = new THREE.ExtrudeGeometry(pShape, pExtrude);
                     
                     const posAttr = petalGeo.attributes.position;
@@ -381,7 +381,9 @@ setupMusicSystem();
                             roughness: 0.4
                         })
                     );
-                    petal.rotation.z = (i / count) * Math.PI * 2;
+                    petal.rotation.z =
+    (i / count) * Math.PI * 2 +
+    (Math.random() - 0.5) * 0.15;
                     petal.rotation.x = 1.5; 
                     petal.userData = {
                         targetX: 0.2 + (l * 0.45),
