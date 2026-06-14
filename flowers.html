@@ -1,13 +1,26 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>The Enchanted Garden</title>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; background: #000; }
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+        }
+
+        canvas {
+            display: block;
+        }
+
         #ui {
             position: absolute;
             bottom: 40px;
@@ -23,351 +36,751 @@
             z-index: 10;
             text-shadow: 0 0 10px rgba(0,0,0,1);
         }
-        canvas { display: block; }
 
-#musicPanel {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    width: 260px;
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 16px;
-    color: white;
-    font-family: Georgia, serif;
-    overflow: hidden;
-    z-index: 20;
-    transition: 0.3s ease;
-}
-#togglePanel {
-    background: none;
-    border: none;
-    color: white;
-    font-size: 22px;
-    cursor: pointer;
-}
+        /* MUSIC PLAYER */
 
-#musicContent {
-    padding: 18px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-}
+        #musicPlayer {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
 
-#songName,
-#audioUpload,
-#playBtn {
-    width: 100%;
-    box-sizing: border-box;
-}
+            width: 240px;
+            padding: 15px;
 
-#songName {
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.08);
-    color: white;
-    padding: 12px;
-    border-radius: 12px;
-    outline: none;
-}
+            background: rgba(0,0,0,0.35);
+            backdrop-filter: blur(12px);
 
-#songName::placeholder {
-    color: rgba(255,255,255,0.5);
-}
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
 
-#audioUpload {
-    color: white;
-}
+            color: white;
+            z-index: 100;
 
-#playBtn {
-    padding: 12px;
-    border-radius: 12px;
-    border: none;
-    cursor: pointer;
-    background: rgba(255,255,255,0.12);
-    color: white;
-    transition: 0.3s;
-}
+            font-family: Arial;
+            box-shadow: 0 0 20px rgba(255,255,255,0.05);
+        }
 
-#playBtn:hover {
-    background: rgba(255,255,255,0.22);
-}
+        #topBar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
 
-#songDisplay {
-    text-align: center;
-    font-size: 12px;
-    opacity: 0.7;
-    letter-spacing: 1px;
-}
+        #songTitle {
+            font-size: 14px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #minimizeBtn {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+        }
+
+        #controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        #controls button {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: white;
+
+            width: 45px;
+            height: 45px;
+
+            border-radius: 50%;
+            cursor: pointer;
+
+            font-size: 18px;
+
+            transition: 0.3s;
+        }
+
+        #controls button:hover {
+            background: rgba(255,255,255,0.25);
+        }
+
+        @media(max-width: 768px) {
+            #musicPlayer {
+                width: 200px;
+                bottom: 15px;
+                right: 15px;
+            }
+        }
+
     </style>
 </head>
+
 <body>
 
     <div id="ui">Drag to turn • Tap to bloom</div>
 
-<div id="musicPanel" class="minimized">
-    <div id="musicHeader">
-        <span> Music Garden</span>
-        <button id="togglePanel">+</button>
+    <!-- MUSIC PLAYER -->
+
+    <div id="musicPlayer">
+
+        <div id="topBar">
+            <div id="songTitle">Enchanted Theme</div>
+            <button id="minimizeBtn">—</button>
+        </div>
+
+        <div id="controls">
+            <button id="prevBtn">⏮</button>
+            <button id="playBtn">▶</button>
+            <button id="nextBtn">⏭</button>
+        </div>
+
     </div>
 
-    <div id="musicContent">
+<script>
 
-        <input
-            type="text"
-            id="songName"
-            placeholder="Type your song name..."
-        >
-
-        <input
-            type="file"
-            id="audioUpload"
-            accept="audio/*"
-        >
-
-        <button id="playBtn">Play Song</button>
-
-        <div id="songDisplay"></div>
-    </div>
-</div>
-
-<audio id="audio"></audio>
-
-    <script>
         let scene, camera, renderer, clock, controls;
         let flowers = [];
         let grassBlades = [];
         let nebulaParticles, starField, shootingStar;
 
-let audio;
-let audioContext;
-let analyser;
-let source;
-let frequencyData;
-let beatEnergy = 0;
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
+        /* MUSIC */
+
+        let audio;
+        let currentSong = 0;
+
+        const songs = [
+            {
+                title: "Enchanted Theme",
+                src: "music/song1.mp3"
+            },
+            {
+                title: "Mystic Bloom",
+                src: "music/song2.mp3"
+            },
+            {
+                title: "Night Garden",
+                src: "music/song3.mp3"
+            }
+        ];
+
         function init() {
+
             scene = new THREE.Scene();
             scene.fog = new THREE.FogExp2(0x020208, 0.012);
 
-            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera = new THREE.PerspectiveCamera(
+                50,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                2000
+            );
+
             camera.position.set(0, 15, 35);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer = new THREE.WebGLRenderer({
+                antialias: true
+            });
+
             renderer.setSize(window.innerWidth, window.innerHeight);
+
             renderer.setPixelRatio(
-    Math.min(window.devicePixelRatio, 1.5)
-);
+                Math.min(window.devicePixelRatio, 1.5)
+            );
+
             renderer.setClearColor(0x010105);
+
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
             renderer.exposure = 1.5;
+
+            renderer.shadowMap.enabled = false;
+
             document.body.appendChild(renderer.domElement);
 
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls = new THREE.OrbitControls(
+                camera,
+                renderer.domElement
+            );
+
             controls.enableDamping = true;
             controls.dampingFactor = 0.05;
-            controls.maxPolarAngle = Math.PI / 2.1; 
+
+            controls.maxPolarAngle = Math.PI / 2.1;
+
             controls.minDistance = 5;
             controls.maxDistance = 150;
 
             clock = new THREE.Clock();
 
             scene.add(new THREE.AmbientLight(0x222244, 1.5));
-            const rimLight = new THREE.DirectionalLight(0x7777ff, 1);
+
+            const rimLight = new THREE.DirectionalLight(
+                0x7777ff,
+                1
+            );
+
             rimLight.position.set(20, 50, 20);
+
             scene.add(rimLight);
 
             createFlashyBackground();
             createGround();
             createGrass();
 
+            setupMusicPlayer();
+
             window.addEventListener('click', onPointer);
+
             window.addEventListener('touchstart', (e) => {
-                if(e.touches.length === 1) onPointer(e.touches[0]);
+                if(e.touches.length === 1)
+                    onPointer(e.touches[0]);
             });
+
             window.addEventListener('resize', onResize);
 
             createFlower(new THREE.Vector3(0, 0, 0));
-setupMusicSystem();
+
             animate();
         }
 
+        /* MUSIC PLAYER */
+
+        function setupMusicPlayer() {
+
+            audio = new Audio(songs[currentSong].src);
+
+            const playBtn = document.getElementById("playBtn");
+            const nextBtn = document.getElementById("nextBtn");
+            const prevBtn = document.getElementById("prevBtn");
+            const songTitle = document.getElementById("songTitle");
+            const controlsBox = document.getElementById("controls");
+            const minimizeBtn = document.getElementById("minimizeBtn");
+
+            songTitle.innerText = songs[currentSong].title;
+
+            let playing = false;
+            let minimized = false;
+
+            playBtn.addEventListener("click", () => {
+
+                if (!playing) {
+
+                    audio.play();
+
+                    playBtn.innerText = "⏸";
+
+                    playing = true;
+
+                } else {
+
+                    audio.pause();
+
+                    playBtn.innerText = "▶";
+
+                    playing = false;
+                }
+            });
+
+            nextBtn.addEventListener("click", () => {
+
+                currentSong++;
+
+                if(currentSong >= songs.length) {
+                    currentSong = 0;
+                }
+
+                changeSong();
+            });
+
+            prevBtn.addEventListener("click", () => {
+
+                currentSong--;
+
+                if(currentSong < 0) {
+                    currentSong = songs.length - 1;
+                }
+
+                changeSong();
+            });
+
+            minimizeBtn.addEventListener("click", () => {
+
+                minimized = !minimized;
+
+                controlsBox.style.display =
+                    minimized ? "none" : "flex";
+
+                minimizeBtn.innerText =
+                    minimized ? "+" : "—";
+            });
+
+            function changeSong() {
+
+                audio.pause();
+
+                audio = new Audio(songs[currentSong].src);
+
+                songTitle.innerText =
+                    songs[currentSong].title;
+
+                audio.play();
+
+                playBtn.innerText = "⏸";
+
+                playing = true;
+            }
+
+            audio.addEventListener("ended", () => {
+
+                currentSong++;
+
+                if(currentSong >= songs.length) {
+                    currentSong = 0;
+                }
+
+                changeSong();
+            });
+        }
+
         function createFlashyBackground() {
+
             const starGeo = new THREE.BufferGeometry();
+
             const starPos = [];
             const starSizes = [];
-            for (let i = 0; i < 10000; i++) {
-                starPos.push((Math.random() - 0.5) * 1200, (Math.random() - 0.2) * 800, (Math.random() - 0.5) * 1200);
+
+            for (let i = 0; i < 4000; i++) {
+
+                starPos.push(
+                    (Math.random() - 0.5) * 1200,
+                    (Math.random() - 0.2) * 800,
+                    (Math.random() - 0.5) * 1200
+                );
+
                 starSizes.push(Math.random());
             }
-            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
-            starGeo.setAttribute('size', new THREE.Float32BufferAttribute(starSizes, 1));
-            
-            const starMat = new THREE.PointsMaterial({ 
-                color: 0xffffff, 
-                size: 0.8, 
-                transparent: true, 
+
+            starGeo.setAttribute(
+                'position',
+                new THREE.Float32BufferAttribute(starPos, 3)
+            );
+
+            starGeo.setAttribute(
+                'size',
+                new THREE.Float32BufferAttribute(starSizes, 1)
+            );
+
+            const starMat = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 0.8,
+                transparent: true,
                 opacity: 0.8,
-                blending: THREE.AdditiveBlending 
+                blending: THREE.AdditiveBlending
             });
+
             starField = new THREE.Points(starGeo, starMat);
+
             scene.add(starField);
 
             const nebulaCount = 6;
+
             nebulaParticles = new THREE.Group();
+
             for(let j=0; j<nebulaCount; j++) {
+
                 const nGeo = new THREE.BufferGeometry();
+
                 const nPos = [];
                 const nCols = [];
-                const color = new THREE.Color();
-                color.setHSL(0.5 + Math.random() * 0.4, 0.7, 0.4);
 
-                for (let i = 0; i < 600; i++) {
-                    nPos.push((Math.random() - 0.5) * 150, (Math.random() - 0.5) * 60, (Math.random() - 0.5) * 150);
-                    nCols.push(color.r, color.g, color.b);
+                const color = new THREE.Color();
+
+                color.setHSL(
+                    0.5 + Math.random() * 0.4,
+                    0.7,
+                    0.4
+                );
+
+                for (let i = 0; i < 250; i++) {
+
+                    nPos.push(
+                        (Math.random() - 0.5) * 150,
+                        (Math.random() - 0.5) * 60,
+                        (Math.random() - 0.5) * 150
+                    );
+
+                    nCols.push(
+                        color.r,
+                        color.g,
+                        color.b
+                    );
                 }
-                nGeo.setAttribute('position', new THREE.Float32BufferAttribute(nPos, 3));
-                nGeo.setAttribute('color', new THREE.Float32BufferAttribute(nCols, 3));
-                
-                const nMat = new THREE.PointsMaterial({ 
-                    size: 2.0, 
-                    vertexColors: true, 
-                    transparent: true, 
-                    opacity: 0.1, 
-                    blending: THREE.AdditiveBlending 
+
+                nGeo.setAttribute(
+                    'position',
+                    new THREE.Float32BufferAttribute(nPos, 3)
+                );
+
+                nGeo.setAttribute(
+                    'color',
+                    new THREE.Float32BufferAttribute(nCols, 3)
+                );
+
+                const nMat = new THREE.PointsMaterial({
+                    size: 2.0,
+                    vertexColors: true,
+                    transparent: true,
+                    opacity: 0.1,
+                    blending: THREE.AdditiveBlending
                 });
+
                 const cloud = new THREE.Points(nGeo, nMat);
-                cloud.position.set((Math.random()-0.5)*300, 30 + Math.random()*40, (Math.random()-0.5)*300);
-                cloud.userData = { speed: 0.0005 + Math.random()*0.001 };
+
+                cloud.position.set(
+                    (Math.random()-0.5)*300,
+                    30 + Math.random()*40,
+                    (Math.random()-0.5)*300
+                );
+
+                cloud.userData = {
+                    speed: 0.0005 + Math.random()*0.001
+                };
+
                 nebulaParticles.add(cloud);
             }
+
             scene.add(nebulaParticles);
 
             const shootGeo = new THREE.BufferGeometry();
-            shootGeo.setAttribute('position', new THREE.Float32BufferAttribute([0,0,0, 0,0,0], 3));
-            shootingStar = new THREE.Line(shootGeo, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 }));
+
+            shootGeo.setAttribute(
+                'position',
+                new THREE.Float32BufferAttribute(
+                    [0,0,0, 0,0,0],
+                    3
+                )
+            );
+
+            shootingStar = new THREE.Line(
+                shootGeo,
+                new THREE.LineBasicMaterial({
+                    color: 0xffffff,
+                    transparent: true,
+                    opacity: 0
+                })
+            );
+
             scene.add(shootingStar);
         }
 
         function createGround() {
-            const groundGeo = new THREE.CircleGeometry(250, 64);
-            const groundMat = new THREE.MeshStandardMaterial({ 
-                color: 0x050805, 
-                roughness: 0.9, 
-                metalness: 0.1 
-            });
-            const ground = new THREE.Mesh(groundGeo, groundMat);
+
+            const groundGeo =
+                new THREE.CircleGeometry(250, 64);
+
+            const groundMat =
+                new THREE.MeshStandardMaterial({
+                    color: 0x050805,
+                    roughness: 0.9,
+                    metalness: 0.1
+                });
+
+            const ground =
+                new THREE.Mesh(groundGeo, groundMat);
+
             ground.rotation.x = -Math.PI / 2;
+
             ground.name = "ground";
+
             scene.add(ground);
         }
 
         function createGrass() {
-            // High-performance Instanced Mesh approach would be better, 
-            // but for visual variety and simple logic we'll use a grouped batch.
-            const grassCount = 8000;
-            const grassGeo = new THREE.PlaneGeometry(0.1, 0.6, 1, 4);
-            // Move origin to bottom of blade
-            grassGeo.translate(0, 0.3, 0); 
-            
-            const grassMat = new THREE.MeshStandardMaterial({ 
-                color: 0x113311, 
-                side: THREE.DoubleSide,
-                alphaTest: 0.5
-            });
 
-            const instancedGrass = new THREE.InstancedMesh(grassGeo, grassMat, grassCount);
+            const isMobile =
+                window.innerWidth < 768;
+
+            const grassCount =
+                isMobile ? 6000 : 12000;
+
+            const grassGeo =
+                new THREE.PlaneGeometry(0.1, 0.6, 1, 4);
+
+            grassGeo.translate(0, 0.3, 0);
+
+            const grassMat =
+                new THREE.MeshStandardMaterial({
+                    color: 0x113311,
+                    side: THREE.DoubleSide,
+                    alphaTest: 0.5
+                });
+
+            const instancedGrass =
+                new THREE.InstancedMesh(
+                    grassGeo,
+                    grassMat,
+                    grassCount
+                );
+
             const dummy = new THREE.Object3D();
 
             for (let i = 0; i < grassCount; i++) {
-                // Random position within circle
-                const angle = Math.random() * Math.PI * 2;
-                const radius = Math.sqrt(Math.random()) * 80;
-                dummy.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
-                
-                dummy.rotation.y = Math.random() * Math.PI;
-                dummy.rotation.x = (Math.random() - 0.5) * 0.2;
-                dummy.scale.setScalar(0.5 + Math.random() * 1.5);
-                
+
+                const angle =
+                    Math.random() * Math.PI * 2;
+
+                const radius =
+                    Math.sqrt(Math.random()) * 80;
+
+                dummy.position.set(
+                    Math.cos(angle) * radius,
+                    0,
+                    Math.sin(angle) * radius
+                );
+
+                dummy.rotation.y =
+                    Math.random() * Math.PI;
+
+                dummy.rotation.x =
+                    (Math.random() - 0.5) * 0.2;
+
+                dummy.scale.setScalar(
+                    0.5 + Math.random() * 1.5
+                );
+
                 dummy.updateMatrix();
-                instancedGrass.setMatrixAt(i, dummy.matrix);
+
+                instancedGrass.setMatrixAt(
+                    i,
+                    dummy.matrix
+                );
             }
-            
+
             scene.add(instancedGrass);
+
             grassBlades = instancedGrass;
         }
 
+        const MAX_FLOWERS = 40;
+
         function createFlower(pos) {
+
+            if(flowers.length >= MAX_FLOWERS){
+
+                const old = flowers.shift();
+
+                scene.remove(old.head.parent);
+            }
+
             const flowerGroup = new THREE.Group();
+
             flowerGroup.position.copy(pos);
+
             scene.add(flowerGroup);
 
             const stemH = 5 + Math.random() * 7;
-            const color = new THREE.Color().setHSL(Math.random(), 0.9, 0.6);
+
+            const color =
+                new THREE.Color().setHSL(
+                    Math.random(),
+                    0.9,
+                    0.6
+                );
 
             const points = [];
+
             const segments = 10;
+
             for (let i = 0; i <= segments; i++) {
+
                 const y = (i / segments) * stemH;
-                const x = i === 0 ? 0 : (Math.random() - 0.5) * (i * 0.5);
-                const z = i === 0 ? 0 : (Math.random() - 0.5) * (i * 0.5);
-                points.push(new THREE.Vector3(x, y, z));
+
+                const x =
+                    i === 0
+                    ? 0
+                    : (Math.random() - 0.5) * (i * 0.5);
+
+                const z =
+                    i === 0
+                    ? 0
+                    : (Math.random() - 0.5) * (i * 0.5);
+
+                points.push(
+                    new THREE.Vector3(x, y, z)
+                );
             }
-            const curve = new THREE.CatmullRomCurve3(points);
-            const stemGeo = new THREE.TubeGeometry(curve, 40, 0.12, 12, false);
-            const stemMat = new THREE.MeshStandardMaterial({ color: 0x0f2a0f, roughness: 0.8 });
-            const stem = new THREE.Mesh(stemGeo, stemMat);
+
+            const curve =
+                new THREE.CatmullRomCurve3(points);
+
+            const stemGeo =
+                new THREE.TubeGeometry(
+                    curve,
+                    40,
+                    0.12,
+                    12,
+                    false
+                );
+
+            const stemMat =
+                new THREE.MeshStandardMaterial({
+                    color: 0x0f2a0f,
+                    roughness: 0.8
+                });
+
+            const stem =
+                new THREE.Mesh(stemGeo, stemMat);
+
             stem.scale.set(1, 0.01, 1);
+
             flowerGroup.add(stem);
 
             const leaves = [];
-            const leafCount = 2 + Math.floor(Math.random() * 2);
-            for (let i = 0; i < leafCount; i++) {
-                const lShape = new THREE.Shape();
-                lShape.moveTo(0, 0);
-                lShape.bezierCurveTo(0.6, 0.3, 0.9, 1.4, 0, 2.0);
-                lShape.bezierCurveTo(-0.9, 1.4, -0.6, 0.3, 0, 0);
 
-                const extrudeSettings = { depth: 0.05, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 3 };
-                const leafGeo = new THREE.ExtrudeGeometry(lShape, extrudeSettings);
-                const leaf = new THREE.Mesh(leafGeo, new THREE.MeshStandardMaterial({ color: 0x143a14, roughness: 0.7 }));
-                
-                const t = 0.2 + (i / leafCount) * 0.5;
+            const leafCount =
+                2 + Math.floor(Math.random() * 2);
+
+            for (let i = 0; i < leafCount; i++) {
+
+                const lShape = new THREE.Shape();
+
+                lShape.moveTo(0, 0);
+
+                lShape.bezierCurveTo(
+                    0.6,
+                    0.3,
+                    0.9,
+                    1.4,
+                    0,
+                    2.0
+                );
+
+                lShape.bezierCurveTo(
+                    -0.9,
+                    1.4,
+                    -0.6,
+                    0.3,
+                    0,
+                    0
+                );
+
+                const extrudeSettings = {
+                    depth: 0.05,
+                    bevelEnabled: true,
+                    bevelThickness: 0.05,
+                    bevelSize: 0.05,
+                    bevelSegments: 3
+                };
+
+                const leafGeo =
+                    new THREE.ExtrudeGeometry(
+                        lShape,
+                        extrudeSettings
+                    );
+
+                const leaf = new THREE.Mesh(
+                    leafGeo,
+                    new THREE.MeshStandardMaterial({
+                        color: 0x143a14,
+                        roughness: 0.7
+                    })
+                );
+
+                const t =
+                    0.2 + (i / leafCount) * 0.5;
+
                 const leafPos = curve.getPoint(t);
+
                 leaf.position.copy(leafPos);
-                leaf.rotation.z = (Math.random() - 0.5) * 1;
-                leaf.rotation.y = Math.random() * Math.PI * 2;
-                leaf.rotation.x = 1.0; 
+
+                leaf.rotation.z =
+                    (Math.random() - 0.5) * 1;
+
+                leaf.rotation.y =
+                    Math.random() * Math.PI * 2;
+
+                leaf.rotation.x = 1.0;
+
                 leaf.scale.setScalar(0.01);
-                
+
                 flowerGroup.add(leaf);
-                leaves.push({ mesh: leaf, targetScale: 0.5 + Math.random() * 0.5 });
+
+                leaves.push({
+                    mesh: leaf,
+                    targetScale: 0.5 + Math.random() * 0.5
+                });
             }
 
             const head = new THREE.Group();
+
             head.position.copy(points[points.length - 1]);
+
             flowerGroup.add(head);
 
             const petals = [];
-            const layers = 3;
-            for (let l = 0; l < layers; l++) {
-                const count = 10 + l * 2;
-                for (let i = 0; i < count; i++) {
-                    const pShape = new THREE.Shape();
-                    pShape.moveTo(0, 0);
-                    pShape.bezierCurveTo(0.9, 0.3, 0.8, 2.5, 0, 2.8);
-                    pShape.bezierCurveTo(-0.8, 2.5, -0.9, 0.3, 0, 0);
 
-                    const pExtrude = { depth: 0.02, bevelEnabled: false, bevelThickness: 0.08, bevelSize: 0.08, bevelSegments: 5 };
-                    const petalGeo = new THREE.ExtrudeGeometry(pShape, pExtrude);
-                    
-                    const posAttr = petalGeo.attributes.position;
+            const layers = 4;
+
+            for (let l = 0; l < layers; l++) {
+
+                const count = 18 + l * 3;
+
+                for (let i = 0; i < count; i++) {
+
+                    const pShape = new THREE.Shape();
+
+                    pShape.moveTo(0, 0);
+
+                    pShape.bezierCurveTo(
+                        0.9,
+                        0.3,
+                        0.8,
+                        2.5,
+                        0,
+                        2.8
+                    );
+
+                    pShape.bezierCurveTo(
+                        -0.8,
+                        2.5,
+                        -0.9,
+                        0.3,
+                        0,
+                        0
+                    );
+
+                    const pExtrude = {
+                        depth: 0.01,
+                        bevelEnabled: false
+                    };
+
+                    const petalGeo =
+                        new THREE.ExtrudeGeometry(
+                            pShape,
+                            pExtrude
+                        );
+
+                    const posAttr =
+                        petalGeo.attributes.position;
+
                     for(let j=0; j<posAttr.count; j++) {
+
                         let py = posAttr.getY(j);
                         let px = posAttr.getX(j);
-                        posAttr.setZ(j, posAttr.getZ(j) + (py * py * 0.15) - (px * px * 0.1));
+
+                        posAttr.setZ(
+                            j,
+                            posAttr.getZ(j)
+                            + (py * py * 0.15)
+                            - (px * px * 0.1)
+                        );
                     }
 
                     const petal = new THREE.Mesh(
@@ -381,225 +794,221 @@ setupMusicSystem();
                             roughness: 0.4
                         })
                     );
+
                     petal.rotation.z =
-    (i / count) * Math.PI * 2 +
-    (Math.random() - 0.5) * 0.15;
-                    petal.rotation.x = 1.5; 
+                        (i / count) * Math.PI * 2;
+
+                    petal.rotation.x = 1.5;
+
                     petal.userData = {
                         targetX: 0.2 + (l * 0.45),
                         delay: 40 + (l * 12) + (i * 2)
                     };
+
                     head.add(petal);
+
                     petals.push(petal);
                 }
             }
 
             const core = new THREE.Mesh(
                 new THREE.SphereGeometry(0.5, 32, 32),
-                new THREE.MeshStandardMaterial({ color: 0xffdd00, emissive: 0xffaa00, emissiveIntensity: 2.5 })
+                new THREE.MeshStandardMaterial({
+                    color: 0xffdd00,
+                    emissive: 0xffaa00,
+                    emissiveIntensity: 2.5
+                })
             );
+
             head.add(core);
-            
+
             const ring = new THREE.Mesh(
                 new THREE.TorusGeometry(0.45, 0.1, 16, 50),
-                new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1 })
+                new THREE.MeshStandardMaterial({
+                    color: 0xffffff,
+                    emissive: 0xffffff,
+                    emissiveIntensity: 1
+                })
             );
+
             ring.rotation.x = Math.PI/2;
+
             head.add(ring);
 
-            const light = new THREE.PointLight(color, 0, 25);
-            head.add(light);
-flowers.push({
-    group: flowerGroup,
-    head,
-    stem,
-    leaves,
-    petals,
-    light,
-    age: 0
-});
+            const light = new THREE.PointLight(
+                color,
+                0,
+                25
+            );
 
-if (flowers.length > 120) {
-    const old = flowers.shift();
-    scene.remove(old.group);
-}
-            
+            head.add(light);
+
+            flowers.push({
+                head,
+                stem,
+                leaves,
+                petals,
+                light,
+                age: 0
+            });
         }
 
         function triggerShootingStar() {
-            const startX = (Math.random()-0.5)*500;
-            const startY = 150 + Math.random()*100;
-            const startZ = -300 - Math.random()*200;
-            const positions = new Float32Array([startX, startY, startZ, startX + 60, startY - 40, startZ + 30]);
-            shootingStar.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            const startX =
+                (Math.random()-0.5)*500;
+
+            const startY =
+                150 + Math.random()*100;
+
+            const startZ =
+                -300 - Math.random()*200;
+
+            const positions = new Float32Array([
+                startX,
+                startY,
+                startZ,
+
+                startX + 60,
+                startY - 40,
+                startZ + 30
+            ]);
+
+            shootingStar.geometry.setAttribute(
+                'position',
+                new THREE.BufferAttribute(
+                    positions,
+                    3
+                )
+            );
+
             shootingStar.material.opacity = 1;
-            setTimeout(() => { shootingStar.material.opacity = 0; }, 350);
+
+            setTimeout(() => {
+                shootingStar.material.opacity = 0;
+            }, 350);
         }
 
         function onPointer(e) {
-            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+            mouse.x =
+                (e.clientX / window.innerWidth) * 2 - 1;
+
+            mouse.y =
+                -(e.clientY / window.innerHeight) * 2 + 1;
+
             raycaster.setFromCamera(mouse, camera);
-            const hits = raycaster.intersectObjects(scene.children);
-            const ground = hits.find(h => h.object.name === "ground");
-            if (ground) createFlower(ground.point);
+
+            const hits =
+                raycaster.intersectObjects(scene.children);
+
+            const ground =
+                hits.find(h => h.object.name === "ground");
+
+            if (ground)
+                createFlower(ground.point);
         }
 
         function onResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
+
+            camera.aspect =
+                window.innerWidth / window.innerHeight;
+
             camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-function setupMusicSystem() {
 
-    audio = document.getElementById('audio');
-
-    const upload = document.getElementById('audioUpload');
-    const playBtn = document.getElementById('playBtn');
-    const songInput = document.getElementById('songName');
-    const songDisplay = document.getElementById('songDisplay');
-
-    upload.addEventListener('change', (e) => {
-
-        const file = e.target.files[0];
-
-        if (file) {
-            audio.src = URL.createObjectURL(file);
-
-            if (songInput.value.trim() !== '') {
-                songDisplay.innerText = 'Now Playing: ' + songInput.value;
-            } else {
-                songDisplay.innerText = 'Now Playing: ' + file.name;
-            }
-        }
-    });
-
-    playBtn.addEventListener('click', async () => {
-
-        if (!audio.src) {
-            alert('Upload a song first 🌸');
-            return;
-        }
-
-        if (!audioContext) {
-
-            audioContext = new (
-                window.AudioContext ||
-                window.webkitAudioContext
-            )();
-
-            source = audioContext.createMediaElementSource(audio);
-
-            analyser = audioContext.createAnalyser();
-            analyser.fftSize = 256;
-
-            frequencyData = new Uint8Array(
-                analyser.frequencyBinCount
+            renderer.setSize(
+                window.innerWidth,
+                window.innerHeight
             );
-
-            source.connect(analyser);
-            analyser.connect(audioContext.destination);
         }
 
-        audioContext.resume();
-audio.play();
-    });
-
-    const panel = document.getElementById('musicPanel');
-    const toggleBtn = document.getElementById('togglePanel');
-
-    toggleBtn.addEventListener('click', () => {
-
-        panel.classList.toggle('minimized');
-
-        if (panel.classList.contains('minimized')) {
-            toggleBtn.innerText = '+';
-        } else {
-            toggleBtn.innerText = '–';
-        }
-    });
-}
         function animate() {
 
             requestAnimationFrame(animate);
+
             const t = clock.getElapsedTime();
+
             controls.update();
 
             if (starField) {
+
                 starField.rotation.y += 0.00008;
-                starField.material.opacity = 0.7 + Math.sin(t * 1.5) * 0.2;
+
+                starField.material.opacity =
+                    0.7 + Math.sin(t * 1.5) * 0.2;
             }
 
             nebulaParticles.children.forEach(cloud => {
+
                 cloud.rotation.y += cloud.userData.speed;
-                cloud.position.y += Math.sin(t * 0.5 + cloud.position.x) * 0.01;
+
+                cloud.position.y +=
+                    Math.sin(
+                        t * 0.5 + cloud.position.x
+                    ) * 0.01;
             });
 
-            // Gentle grass sway
             if (grassBlades) {
-                grassBlades.rotation.x = Math.sin(t * 0.8) * 0.05;
-                grassBlades.rotation.z = Math.cos(t * 0.5) * 0.05;
+
+                grassBlades.rotation.x =
+                    Math.sin(t * 0.8) * 0.05;
+
+                grassBlades.rotation.z =
+                    Math.cos(t * 0.5) * 0.05;
             }
 
-            if(Math.random() < 0.008) triggerShootingStar();
-if (analyser) {
+            if(Math.random() < 0.008)
+                triggerShootingStar();
 
-    analyser.getByteFrequencyData(frequencyData);
-
-    let bass = 0;
-
-    for (let i = 0; i < 10; i++) {
-        bass += frequencyData[i];
-    }
-
-    bass /= 10;
-
-    beatEnergy = bass / 255;
-
-    renderer.exposure = 1.4 + beatEnergy * 1.5;
-
-    nebulaParticles.children.forEach(cloud => {
-        cloud.material.opacity = 0.08 + beatEnergy * 0.35;
-    });
-
-    scene.fog.density = 0.012 + beatEnergy * 0.008;
-
-    if (beatEnergy > 0.55 && Math.random() < 0.25) {
-
-        const angle = Math.random() * Math.PI * 2;
-        const radius = Math.random() * 45;
-
-        createFlower(
-            new THREE.Vector3(
-                Math.cos(angle) * radius,
-                0,
-                Math.sin(angle) * radius
-            )
-        );
-    }
-}
             flowers.forEach(f => {
+
                 f.age++;
+
                 if (f.age < 60) {
+
                     const progress = f.age / 60;
+
                     f.stem.scale.y = progress;
+
                     f.head.scale.setScalar(progress);
+
                     f.leaves.forEach(l => {
-                        const s = progress * l.targetScale;
+
+                        const s =
+                            progress * l.targetScale;
+
                         l.mesh.scale.set(s, s, s);
                     });
                 }
-                
+
                 f.head.lookAt(camera.position);
 
                 if (f.age > 60) {
+
                     f.petals.forEach(p => {
+
                         if (f.age > p.userData.delay) {
-                            p.material.opacity = Math.min(1, p.material.opacity + 0.08);
-                            if (p.rotation.x > p.userData.targetX) p.rotation.x -= 0.025;
+
+                            p.material.opacity =
+                                Math.min(
+                                    1,
+                                    p.material.opacity + 0.08
+                                );
+
+                            if (
+                                p.rotation.x >
+                                p.userData.targetX
+                            ) {
+                                p.rotation.x -= 0.025;
+                            }
                         }
                     });
-                    f.light.intensity = Math.min(5, f.light.intensity + 0.15);
+
+                    f.light.intensity =
+                        Math.min(
+                            5,
+                            f.light.intensity + 0.15
+                        );
                 }
             });
 
@@ -607,5 +1016,9 @@ if (analyser) {
         }
 
         init();
-    </script>
+
+</script>
+
 </body>
+</html>
+```
